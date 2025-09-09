@@ -51,6 +51,8 @@
     local.get $x
     local.get $y
     call $get_cell_index
+    call $get_universe_offset
+    i32.add
     i32.load8_s
   )
 
