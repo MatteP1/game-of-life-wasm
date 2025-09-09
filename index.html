@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Game of Life (Wasm)</title>
+  <style>
+    canvas {
+      border: 1px solid black;
+    }
+  </style>
+</head>
+<body>
+  <h1>Game of Life (Wasm)</h1>
+  <canvas id="grid" width="400" height="400"></canvas>
+  <br>
+  <button id="step">Step</button>
+  <button id="run">Run</button>
+  <button id="stop">Stop</button>
+  <button id="random-uni">Random</button>
+
+  <script>
+    const CELL_SIZE = 20;         // pixels per cell
+  
+    const canvas = document.getElementById("grid");
+    const ctx = canvas.getContext("2d");
+
+    let wasm;
+    let GRID_WIDTH;
+    let GRID_HEIGHT;
+    let intervalId = null;
+
+    async function init() {
+      const response = await fetch("gol.wasm");
+      const imports = {
+        util: {
+          random_cell: () => {
+            // read globals directly from wasm exports
+            const width = wasm.universe_length.value;
+            const height = wasm.universe_height.value;
+            const x = Math.floor(Math.random() * width);
+            const y = Math.floor(Math.random() * height);
+            return [x, y];
+          }
+        }
+      };
+      const { instance } = await WebAssembly.instantiateStreaming(response, imports);
+      wasm = instance.exports;
+
+	    GRID_WIDTH = wasm.universe_length.value;
+      GRID_HEIGHT = wasm.universe_height.value;
+
+      // set canvas size to fit the grid
+      canvas.width = GRID_WIDTH * CELL_SIZE;
+      canvas.height = GRID_HEIGHT * CELL_SIZE;
+
+      wasm.generate_random_universe(30);
+
+      drawGrid();
+    }
+
+    function getRandomCell() {
+      const x = Math.floor(Math.random() * GRID_WIDTH);
+      const y = Math.floor(Math.random() * GRID_HEIGHT);
+      return { x, y };
+    }
+
+    function drawGrid() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let y = 0; y < GRID_HEIGHT; y++) {
+        for (let x = 0; x < GRID_WIDTH; x++) {
+          const alive = wasm.get_cell(x, y);
+          if (alive) {
+            ctx.fillStyle = "black";
+            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+          } else {
+            ctx.fillStyle = "white";
+            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+          }
+          // Optional: grid lines
+          ctx.strokeStyle = "lightgray";
+          ctx.strokeRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        }
+      }
+    }
+
+    function step() {
+      wasm.evolve_universe();
+      drawGrid();
+    }
+
+    function toggleCell(x, y) {
+      const current = wasm.get_cell(x, y);
+      wasm.set_cell(x, y, current ? 0 : 1);
+      drawGrid();
+    }
+
+    // mouse click handler
+    canvas.addEventListener("click", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((event.clientX - rect.left) / CELL_SIZE);
+      const y = Math.floor((event.clientY - rect.top) / CELL_SIZE);
+      if (x >= 0 && x < GRID_WIDTH && y >= 0 && y < GRID_HEIGHT) {
+        toggleCell(x, y);
+      }
+    });
+
+    document.getElementById("step").addEventListener("click", step);
+
+    document.getElementById("run").addEventListener("click", () => {
+      if (intervalId === null) {
+        intervalId = setInterval(step, 200);
+      }
+    });
+
+    document.getElementById("stop").addEventListener("click", () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    });
+
+    document.getElementById("random-uni").addEventListener("click", () => {
+      wasm.generate_random_universe(30);
+      drawGrid();
+    })
+
+    init();
+  </script>
+</body>
+</html>
